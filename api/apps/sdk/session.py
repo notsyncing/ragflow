@@ -20,6 +20,7 @@ import time
 from flask import Response, jsonify, request
 
 from agent.canvas import Canvas
+from api.apps.file_url_utils import parse_from_file_urls
 from api.db import LLMType, StatusEnum
 from api.db.db_models import APIToken
 from api.db.services.api_service import API4ConversationService
@@ -98,7 +99,11 @@ def create_agent_session(tenant_id, agent_id):
                 else:
                     if req is None or not req.get(ele["key"]):
                         return get_error_data_result(f"`{ele['key']}` with type `{ele['type']}` is required")
-                    ele["value"] = req[ele["key"]]
+
+                    if ele["type"] == "fileUrls":
+                        ele["value"] = "\n".join(parse_from_file_urls(req[ele["key"]], user_id))
+                    else:
+                        ele["value"] = req[ele["key"]]
             else:
                 if ele["type"] == "file":
                     if files is not None and files.get(ele["key"]):
@@ -111,7 +116,10 @@ def create_agent_session(tenant_id, agent_id):
                             ele.pop("value")
                 else:
                     if req is not None and req.get(ele["key"]):
-                        ele["value"] = req[ele["key"]]
+                        if ele["type"] == "fileUrls":
+                            ele["value"] = "\n".join(parse_from_file_urls(req[ele["key"]], user_id))
+                        else:
+                            ele["value"] = req[ele["key"]]
                     else:
                         if "value" in ele:
                             ele.pop("value")

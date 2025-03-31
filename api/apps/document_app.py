@@ -22,6 +22,7 @@ import flask
 from flask import request
 from flask_login import login_required, current_user
 
+from api.apps.file_url_utils import is_stored_url, parse_from_file_urls
 from deepdoc.parser.html_parser import RAGFlowHtmlParser
 from rag.nlp import search
 
@@ -543,6 +544,10 @@ def upload_and_parse():
 def parse():
     url = request.json.get("url") if request.json else ""
     if url:
+        if is_stored_url(url):
+            data = parse_from_file_urls([url], "")
+            return get_json_result(data=data)
+
         if not is_valid_url(url):
             return get_json_result(
                 data=False, message='The URL format is invalid', code=settings.RetCode.ARGUMENT_ERROR)

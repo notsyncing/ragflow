@@ -57,6 +57,7 @@ import {
   CirclePower,
   CloudUpload,
   IterationCcw,
+  Link,
   ListOrdered,
   OptionIcon,
   TextCursorInput,
@@ -2947,6 +2948,7 @@ export enum BeginQueryType {
   Paragraph = 'paragraph',
   Options = 'options',
   File = 'file',
+  FileUrls = "fileUrls",
   Integer = 'integer',
   Boolean = 'boolean',
 }
@@ -2956,6 +2958,7 @@ export const BeginQueryTypeIconMap = {
   [BeginQueryType.Paragraph]: WrapText,
   [BeginQueryType.Options]: OptionIcon,
   [BeginQueryType.File]: CloudUpload,
+  [BeginQueryType.FileUrls]: Link,
   [BeginQueryType.Integer]: ListOrdered,
   [BeginQueryType.Boolean]: ToggleLeft,
 };
