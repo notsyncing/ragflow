@@ -47,6 +47,7 @@ class RetrievalParam(ComponentParamBase):
         self.empty_response = ""
         self.tavily_api_key = ""
         self.use_kg = False
+        self.use_latest_msg_only = False
 
     def check(self):
         self.check_decimal_float(self.similarity_threshold, "[Retrieval] Similarity threshold")
@@ -58,7 +59,10 @@ class Retrieval(ComponentBase, ABC):
     component_name = "Retrieval"
 
     def _run(self, history, **kwargs):
-        query = self.get_input()
+        query = self.get_input(
+            latest_msg_only=self._param.use_latest_msg_only
+        )
+
         query = str(query["content"][0]) if "content" in query else ""
         query = re.split(r"(USER:|ASSISTANT:)", query)[-1]
 

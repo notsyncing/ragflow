@@ -1224,6 +1224,8 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         '当尝试解析上述提示词中的变量时的最大递归深度。如果该值为0，那么只会解析当前文本中的变量。',
       knowledgeBasesTip: '选择关联的知识库，或者在下方选择包含知识库ID的变量。',
       knowledgeBaseVars: '知识库变量',
+      useLatestMessageOnly: '仅使用对话中的最新消息',
+      useLatestMessageOnlyTip: '如果你使用了对话组件的输出，那么启用该选项将仅使用对话组件中的最新一条消息进行检索。',
       code: '代码',
       codeDescription: '它允许开发人员编写自定义 Python 逻辑。',
       inputVariables: '输入变量',
