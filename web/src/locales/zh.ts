@@ -1219,6 +1219,9 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       promptMessage: '提示词是必填项',
       promptTip:
         '系统提示为大模型提供任务描述、规定回复方式，以及设置其他各种要求。系统提示通常与 key （变量）合用，通过变量设置大模型的输入数据。你可以通过斜杠或者 (x) 按钮显示可用的 key。',
+      promptRecursiveDepth: '提示词变量递归解析最大深度',
+      promptRecursiveDepthTip: 
+        '当尝试解析上述提示词中的变量时的最大递归深度。如果该值为0，那么只会解析当前文本中的变量。',
       knowledgeBasesTip: '选择关联的知识库，或者在下方选择包含知识库ID的变量。',
       knowledgeBaseVars: '知识库变量',
       code: '代码',

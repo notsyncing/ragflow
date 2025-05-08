@@ -48,6 +48,7 @@ class GenerateParam(ComponentParamBase):
         super().__init__()
         self.llm_id = ""
         self.prompt = ""
+        self.prompt_recursive_depth = 0
         self.max_tokens = 0
         self.temperature = 0
         self.top_p = 0
@@ -62,6 +63,7 @@ class GenerateParam(ComponentParamBase):
         self.check_decimal_float(self.presence_penalty, "[Generate] Presence penalty")
         self.check_decimal_float(self.frequency_penalty, "[Generate] Frequency penalty")
         self.check_nonnegative_number(self.max_tokens, "[Generate] Max tokens")
+        self.check_nonnegative_number(self.prompt_recursive_depth, "[Generate] Prompt recursive depth")
         self.check_decimal_float(self.top_p, "[Generate] Top P")
         self.check_empty(self.llm_id, "[Generate] LLM")
         # self.check_defined_type(self.parameters, "Parameters", ["list"])
@@ -124,10 +126,10 @@ class Generate(ComponentBase):
 
         return res
 
-    def get_input_elements(self):
+    def __get_input_elements_from_prompt(self, prompt: str) -> list[dict[str, str]]:
         key_set = set([])
         res = [{"key": "user", "name": "Input your question here:"}]
-        for r in re.finditer(r"\{([a-z]+[:@][a-z0-9_-]+)\}", self._param.prompt, flags=re.IGNORECASE):
+        for r in re.finditer(r"\{([a-z]+[:@][a-z0-9_-]+)\}", prompt, flags=re.IGNORECASE):
             cpn_id = r.group(1)
             if cpn_id in key_set:
                 continue
@@ -146,6 +148,72 @@ class Generate(ComponentBase):
             key_set.add(cpn_id)
         return res
 
+    def get_input_elements(self):
+        return self.__get_input_elements_from_prompt(self._param.prompt)
+
+    def __recursive_resolve_prompt(
+        self, 
+        prompt: str,
+        resolved_args: dict[str, Any],
+        resolved_retrieval_res: pd.DataFrame,
+        current_depth: int = 0
+    ) -> str:
+        if current_depth > self._param.prompt_recursive_depth:
+            return prompt
+        elif current_depth == 0:
+            self._param.inputs = []
+
+        resolved_input_elements = self.__get_input_elements_from_prompt(prompt)[1:]
+
+        for para in resolved_input_elements:
+            if para["key"] in resolved_args:
+                continue
+
+            if para["key"].lower().find("begin@") == 0:
+                cpn_id, key = para["key"].split("@")
+                for p in self._canvas.get_component(cpn_id)["obj"]._param.query:
+                    if p["key"] == key:
+                        resolved_args[para["key"]] = p.get("value", "")
+                        self._param.inputs.append(
+                            {"component_id": para["key"], "content": resolved_args[para["key"]]})
+                        break
+                else:
+                    assert False, f"Can't find parameter '{key}' for {cpn_id}"
+                
+                continue
+
+            component_id = para["key"]
+            cpn = self._canvas.get_component(component_id)["obj"]
+            if cpn.component_name.lower() == "answer":
+                hist = self._canvas.get_history(1)
+                if hist:
+                    hist = hist[0]["content"]
+                else:
+                    hist = ""
+                resolved_args[para["key"]] = hist
+                continue
+            _, out = cpn.output(allow_partial=False)
+            if "content" not in out.columns:
+                resolved_args[para["key"]] = ""
+            else:
+                if cpn.component_name.lower() == "retrieval":
+                    resolved_retrieval_res = pd.concat([resolved_retrieval_res, pd.DataFrame(out)], ignore_index=True)
+                resolved_args[para["key"]] = "  - " + "\n - ".join([o if isinstance(o, str) else str(o) for o in out["content"]])
+            self._param.inputs.append({"component_id": para["key"], "content": resolved_args[para["key"]]})
+
+        for n, v in resolved_args.items():
+            prompt = re.sub(r"\{%s\}" % re.escape(n), str(v).replace("\\", " "), prompt)
+
+        if not self._param.inputs and prompt.find("{input}") >= 0:
+            resolved_retrieval_res = self.get_input()
+            input = ("  - " + "\n  - ".join(
+                [c for c in resolved_retrieval_res["content"] if isinstance(c, str)])) if "content" in resolved_retrieval_res else ""
+            prompt = re.sub(r"\{input\}", re.escape(input), prompt)
+        elif len(resolved_input_elements) == 0:
+            return prompt
+
+        return self.__recursive_resolve_prompt(prompt, resolved_args, resolved_retrieval_res, current_depth + 1)
+
     def _run(self, history, **kwargs):
         chat_mdl = LLMBundle(self._canvas.get_tenant_id(), LLMType.CHAT, self._param.llm_id)
 
@@ -157,55 +225,8 @@ class Generate(ComponentBase):
                 [llm_tool_metadata_to_openai_tool(t.get_metadata()) for t in tools]
             )
 
-        prompt = self._param.prompt
-
-        retrieval_res = []
-        self._param.inputs = []
-        for para in self.get_input_elements()[1:]:
-            if para["key"].lower().find("begin@") == 0:
-                cpn_id, key = para["key"].split("@")
-                for p in self._canvas.get_component(cpn_id)["obj"]._param.query:
-                    if p["key"] == key:
-                        kwargs[para["key"]] = p.get("value", "")
-                        self._param.inputs.append(
-                            {"component_id": para["key"], "content": kwargs[para["key"]]})
-                        break
-                else:
-                    assert False, f"Can't find parameter '{key}' for {cpn_id}"
-                continue
-
-            component_id = para["key"]
-            cpn = self._canvas.get_component(component_id)["obj"]
-            if cpn.component_name.lower() == "answer":
-                hist = self._canvas.get_history(1)
-                if hist:
-                    hist = hist[0]["content"]
-                else:
-                    hist = ""
-                kwargs[para["key"]] = hist
-                continue
-            _, out = cpn.output(allow_partial=False)
-            if "content" not in out.columns:
-                kwargs[para["key"]] = ""
-            else:
-                if cpn.component_name.lower() == "retrieval":
-                    retrieval_res.append(out)
-                kwargs[para["key"]] = "  - " + "\n - ".join([o if isinstance(o, str) else str(o) for o in out["content"]])
-            self._param.inputs.append({"component_id": para["key"], "content": kwargs[para["key"]]})
-
-        if retrieval_res:
-            retrieval_res = pd.concat(retrieval_res, ignore_index=True)
-        else:
-            retrieval_res = pd.DataFrame([])
-
-        for n, v in kwargs.items():
-            prompt = re.sub(r"\{%s\}" % re.escape(n), str(v).replace("\\", " "), prompt)
-
-        if not self._param.inputs and prompt.find("{input}") >= 0:
-            retrieval_res = self.get_input()
-            input = ("  - " + "\n  - ".join(
-                [c for c in retrieval_res["content"] if isinstance(c, str)])) if "content" in retrieval_res else ""
-            prompt = re.sub(r"\{input\}", re.escape(input), prompt)
+        retrieval_res = pd.DataFrame([])
+        prompt = self.__recursive_resolve_prompt(self._param.prompt, kwargs, retrieval_res)
 
         downstreams = self._canvas.get_component(self._id)["downstream"]
         if kwargs.get("stream") and len(downstreams) == 1 and self._canvas.get_component(downstreams[0])[

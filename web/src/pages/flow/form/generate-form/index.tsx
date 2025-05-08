@@ -2,7 +2,7 @@ import LLMSelect from '@/components/llm-select';
 import MessageHistoryWindowSizeItem from '@/components/message-history-window-size-item';
 import { PromptEditor } from '@/components/prompt-editor';
 import { useTranslate } from '@/hooks/common-hooks';
-import { Form, Switch } from 'antd';
+import { Form, InputNumber, Switch } from 'antd';
 import { IOperatorForm } from '../../interface';
 import LLMToolsSelect from '@/components/llm-tools-select';
 import { useState } from 'react';
@@ -52,6 +52,14 @@ const GenerateForm = ({ onValuesChange, form }: IOperatorForm) => {
         tooltip={t('modelEnabledToolsTip', { keyPrefix: 'chat' })}
       >
         <LLMToolsSelect disabled={!isCurrentLlmSupportTools}></LLMToolsSelect>
+      </Form.Item>
+      <Form.Item
+        name="prompt_recursive_depth"
+        label={t('promptRecursiveDepth')}
+        initialValue={0}
+        tooltip={t('promptRecursiveDepthTip')}
+      >
+        <InputNumber style={{ width: '100%' }} />
       </Form.Item>
       <Form.Item
         name={['cite']}

@@ -1263,6 +1263,9 @@ This delimiter is used to split the input text into several text pieces echo of 
       promptTip:
         'Use the system prompt to describe the task for the LLM, specify how it should respond, and outline other miscellaneous requirements. The system prompt is often used in conjunction with keys (variables), which serve as various data inputs for the LLM. Use a forward slash `/` or the (x) button to show the keys to use.',
       promptMessage: 'Prompt is required',
+      promptRecursiveDepth: 'Max prompt variable recursive resolving depth',
+      promptRecursiveDepthTip: 
+        'Max recursive depth when trying to resolve the variables in prompt above. If the value is 0, it will resolve the variables in current text only.',
       infor: 'Information run',
       knowledgeBasesTip:
         'Select the knowledge bases to associate with this chat assistant, or choose variables containing knowledge base IDs below.',
