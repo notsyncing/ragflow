@@ -61,6 +61,7 @@ class GenerateParam(ComponentParamBase):
         self.parameters = []
         self.llm_enabled_tools = []
         self.llm_enabled_mcp_servers = []
+        self.mcp_server_variable_map = []
 
     def check(self):
         self.check_decimal_float(self.temperature, "[Generate] Temperature")
@@ -93,6 +94,16 @@ class Generate(ComponentBase):
     def get_dependent_components(self):
         inputs = self.get_input_elements()
         cpnts = set([i["key"] for i in inputs[1:] if i["key"].lower().find("answer") < 0 and i["key"].lower().find("begin") < 0])
+
+        mcp_server_inputs = [
+            m["component_id"]
+            for m in self._param.mcp_server_variable_map
+            if m.get("component_id") is not None and m["component_id"].lower().find("answer") < 0 and m["component_id"].lower().find("begin") < 0
+        ]
+
+        for cpn_id in mcp_server_inputs:
+            cpnts.add(cpn_id)
+
         return list(cpnts)
 
     def set_cite(self, retrieval_res, answer):
@@ -150,6 +161,30 @@ class Generate(ComponentBase):
                 continue
             res.append({"key": cpn_id, "name": cpn_nm})
             key_set.add(cpn_id)
+
+        for m in self._param.mcp_server_variable_map or []:
+            cpn_id = m.get("component_id")
+
+            if cpn_id is None:
+                continue
+
+            if cpn_id in key_set:
+                continue
+
+            if cpn_id.lower().find("begin@") == 0:
+                real_cpn_id, key = cpn_id.split("@")
+                for p in self._canvas.get_component(real_cpn_id)["obj"]._param.query:
+                    if p["key"] != key:
+                        continue
+                    res.append({"key": cpn_id, "name": p["name"]})
+                    key_set.add(cpn_id)
+            else:
+                cpn_nm = self._canvas.get_component_name(cpn_id)
+                if not cpn_nm:
+                    continue
+                res.append({"key": cpn_id, "name": cpn_nm})
+                key_set.add(cpn_id)
+
         return res
 
     def get_input_elements(self):
@@ -229,17 +264,42 @@ class Generate(ComponentBase):
                 [llm_tool_metadata_to_openai_tool(t.get_metadata()) for t in tools]
             )
 
+        retrieval_res = pd.DataFrame([])
+        prompt = self.__recursive_resolve_prompt(self._param.prompt, kwargs, retrieval_res)
+
         mcp_toolcall_sessions: list[MCPToolCallSession] = []
 
         if len(self._param.llm_enabled_mcp_servers) > 0:
             for mcp_server_id in self._param.llm_enabled_mcp_servers:
                 found, mcp_server = MCPServerService.get_by_id(mcp_server_id)
 
-                if not found:
+                if not found or mcp_server is None:
                     logging.warning(f"MCP server {mcp_server_id} in component {self.component_name} does not exist, it will be skipped!")
                     continue
 
-                toolcall_session = MCPToolCallSession(mcp_server)
+                mcp_server_variables = {}
+
+                for server_var in mcp_server.variables:
+                    target_key = f"{server_var['key']}@{mcp_server_id}"
+                    input_server_var = next(filter(lambda v: v["target"] == target_key, self._param.mcp_server_variable_map), None)
+
+                    if input_server_var is None:
+                        continue
+
+                    target_value: str
+
+                    if input_server_var["type"] == "reference":
+                        source_key = input_server_var["component_id"]
+                        target_value = kwargs.get(source_key, "")
+                    elif input_server_var["type"] == "input":
+                        target_value = input_server_var["value"]
+                    else:
+                        logging.warning(f"MCP server variable {target_key} has invalid type {input_server_var['type']}, will ignore this variable!")
+                        target_value = ""
+
+                    mcp_server_variables[server_var["key"]] = target_value
+
+                toolcall_session = MCPToolCallSession(mcp_server, mcp_server_variables)
                 tools = [mcp_tool_metadata_to_openai_tool(t) for t in toolcall_session.get_tools()]
 
                 if len(tools) > 0:
@@ -249,9 +309,6 @@ class Generate(ComponentBase):
                     toolcall_session.close_sync()
                 
                 mcp_toolcall_sessions.append(toolcall_session)
-
-        retrieval_res = pd.DataFrame([])
-        prompt = self.__recursive_resolve_prompt(self._param.prompt, kwargs, retrieval_res)
 
         downstreams = self._canvas.get_component(self._id)["downstream"]
         if kwargs.get("stream") and len(downstreams) == 1 and self._canvas.get_component(downstreams[0])[
